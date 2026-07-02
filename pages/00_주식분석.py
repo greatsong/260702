@@ -19,22 +19,18 @@ st.markdown("""
 # --- 사이드바: 입력 제어 ---
 st.sidebar.header("🔍 검색 및 설정")
 
-# 주식 티커 가이드 안내
-with st.sidebar.expander("💡 티커(Ticker) 입력 가이드", expanded=False):
+with St.sidebar.expander("💡 티커(Ticker) 입력 가이드", expanded=False):
     st.markdown("""
     - **미국 주식**: Apple (`AAPL`), NVIDIA (`NVDA`), Tesla (`TSLA`)
     - **한국 주식**: 삼성전자 (`005930.KS`), SK하이닉스 (`000660.KS`), 카카오 (`035720.KQ`)
     *코스피는 뒤에 `.KS`, 코스닥은 `.KQ`를 붙여야 합니다.*
     """)
 
-# 기본값으로 삼성전자 입력
-ticker_input = st.sidebar.text_input("주식 티ker 기호 입력:", value="005930.KS").strip()
+ticker_input = st.sidebar.text_input("주식 Ticker 기호 입력:", value="005930.KS").strip().upper()
 
-# 날짜 선택 (기본 최근 1년)
 start_date = st.sidebar.date_input("시작일", datetime.now() - timedelta(days=365))
 end_date = st.sidebar.date_input("종료일", datetime.now())
 
-# 이동평균선(MA) 설정
 ma_days = st.sidebar.multiselect(
     "이동평균선(MA) 선택:",
     options=[5, 20, 60, 120],
@@ -42,9 +38,10 @@ ma_days = st.sidebar.multiselect(
 )
 
 # --- 데이터 로드 기능 ---
-@st.cache_data(ttl=3600)  # 1시간 동안 데이터 캐싱하여 성능 최적화
+@st.cache_data(ttl=1800)  # 캐싱 시간을 30분으로 조정하여 최신 데이터 반영과 차단 방지 밸런스 유지
 def load_data(ticker, start, end):
     try:
+        # yfinance의 주가 다운로드는 비교적 차단이 덜합니다.
         data = yf.download(ticker, start=start, end=end)
         return data
     except Exception as e:
@@ -55,15 +52,19 @@ if ticker_input:
         df = load_data(ticker_input, start_date, end_date)
     
     if df is not None and not df.empty:
-        # 야후 파이낸스 메타데이터 가져오기
-        ticker_info = yf.Ticker(ticker_input).info
-        company_name = ticker_info.get("longName", ticker_input)
-        currency = ticker_info.get("currency", "USD")
+        
+        # ⚠️ [수정 포인트] 에러 유발 주범인 .info를 제거하고 논리적으로 메타데이터 처리
+        company_name = ticker_input
+        
+        # 티커 확장자를 보고 통화(Currency) 단위를 수동 추론 (차단 원천 차단)
+        if ticker_input.endswith(".KS") or ticker_input.endswith(".KQ"):
+            currency = "KRW (원)"
+        else:
+            currency = "USD ($)"
 
         # --- 주요 지표 레이아웃 ---
-        st.subheader(f"🏢 {company_name} ({ticker_input}) 현재 시장 데이터")
+        st.subheader(f"🏢 {company_name} 현재 시장 데이터")
         
-        # 최신 데이터 및 이전 영업일 데이터 추출
         latest_close = df['Close'].iloc[-1].item()
         prev_close = df['Close'].iloc[-2].item() if len(df) > 1 else latest_close
         price_change = latest_close - prev_close
@@ -76,7 +77,7 @@ if ticker_input:
             latest_vol = df['Volume'].iloc[-1].item()
             col2.metric(label="최근 거래량", value=f"{latest_vol:,.0f} 주")
         
-        # --- 주식 용어 사전 (Expander 활용) ---
+        # --- 주식 용어 사전 ---
         with st.expander("📚 주식 기초 용어 설명 보기"):
             st.markdown("""
             * **종가 (Close):** 주식 시장이 마감될 때 결정된 최종 가격입니다. 투자자들이 당일 가치를 어떻게 평가했는지 보여주는 가장 중요한 기준입니다.
@@ -89,7 +90,6 @@ if ticker_input:
         
         fig = go.Figure()
 
-        # 1. 캔들스틱(봉차트) 추가
         fig.add_trace(go.Candlestick(
             x=df.index,
             open=df['Open'].squeeze(),
@@ -99,7 +99,6 @@ if ticker_input:
             name="주가 (OHLC)"
         ))
 
-        # 2. 이동평균선(MA) 계산 및 추가
         for ma in ma_days:
             df[f'MA_{ma}'] = df['Close'].rolling(window=ma).mean()
             fig.add_trace(go.Scatter(
@@ -109,21 +108,19 @@ if ticker_input:
                 name=f'{ma}일 이동평균선'
             ))
 
-        # 차트 레이아웃 스타일링
         fig.update_layout(
             title=f"{company_name} 주가 분석 (캔들스틱 & 이동평균선)",
             xaxis_title="날짜",
             yaxis_title=f"주가 ({currency})",
-            xaxis_rangeslider_visible=True, # 하단 범위 조절 슬라이더 활성화
+            xaxis_rangeslider_visible=True,
             template="plotly_white",
             height=600
         )
 
         st.plotly_chart(fig, use_container_width=True)
 
-        # --- 데이터 테이블 확인 ---
         if st.checkbox("전체 데이터 테이블 보기"):
             st.dataframe(df.sort_index(ascending=False))
 
     else:
-        st.error("데이터를 가져오지 못했습니다. 티커 기호가 정확한지, 혹은 날짜 범위가 올바른지 확인해주세요.")
+        st.error("데이터를 가져오지 못했습니다. 티커 기호가 정확한지, 혹은 Yahoo Finance 서버가 일시적으로 요청을 제한 중인지 확인해주세요.")
