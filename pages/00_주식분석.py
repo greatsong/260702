@@ -19,7 +19,7 @@ st.markdown("""
 # --- 사이드바: 입력 제어 ---
 st.sidebar.header("🔍 검색 및 설정")
 
-with St.sidebar.expander("💡 티커(Ticker) 입력 가이드", expanded=False):
+with st.sidebar.expander("💡 티커(Ticker) 입력 가이드", expanded=False):
     st.markdown("""
     - **미국 주식**: Apple (`AAPL`), NVIDIA (`NVDA`), Tesla (`TSLA`)
     - **한국 주식**: 삼성전자 (`005930.KS`), SK하이닉스 (`000660.KS`), 카카오 (`035720.KQ`)
